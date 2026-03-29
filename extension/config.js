@@ -1,1 +1,1 @@
-const CONFIG = { API_BASE: "http://localhost:5000" };
+export const CONFIG = { API_BASE: "http://localhost:5000" };
