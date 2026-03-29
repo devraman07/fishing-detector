@@ -1,0 +1,48 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - ML_SERVER_URL=http://ml-server:5001
+    depends_on:
+      ml-server:
+        condition: service_healthy
+    networks:
+      - sbg-network
+
+  ml-server:
+    build:
+      context: ./ml-server
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    networks:
+      - sbg-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    env_file:
+      - ./frontend/.env
+    environment:
+      - VITE_API_URL=http://localhost:5000
+    networks:
+      - sbg-network
+
+networks:
+  sbg-network:
+    driver: bridge
