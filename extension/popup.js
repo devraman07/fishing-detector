@@ -1,4 +1,6 @@
-﻿const statusEl = document.getElementById("status");
+﻿import { CONFIG } from "./config.js";
+
+const statusEl = document.getElementById("status");
 
 chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
   const url = tab?.url;
@@ -8,7 +10,7 @@ chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
   }
 
   try {
-    const res = await fetch("http://localhost:5000/api/scan", {
+    const res = await fetch(`${CONFIG.API_BASE}/api/scan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url })

@@ -4,12 +4,28 @@ import { callMLServer } from "../services/mlClient.js";
 import { db } from "../db/db.js";
 import { scanLogs } from "../db/schema.js";
 
+// In-memory scan result cache
+const scanCache = new Map();
+const CACHE_TTL = 1000 * 60 * 60; // 1 hour
 
-const ScanControler = async( req, res)=> {
+const ScanController = async( req, res)=> {
    try {
     const {url} = validateUrl(req.body);
     
-    const prediction = callMLServer(url);
+    // Additional URL validation
+    try { new URL(url); } catch { return res.status(400).json({ error: "Invalid URL" }); }
+    if (url.length > 2048) return res.status(400).json({ error: "URL too long" });
+    
+    // Check cache first
+    const cached = scanCache.get(url);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return res.json({ ...cached.result, cached: true });
+    }
+    
+    const prediction = await callMLServer(url);
+    
+    // Store in cache
+    scanCache.set(url, { result: prediction, timestamp: Date.now() });
     
     await db.insert(scanLogs).values({
                url,
@@ -20,14 +36,14 @@ const ScanControler = async( req, res)=> {
        
 
    } catch (error) {
-      if (err instanceof ZodError) {
-            return res.status(422).json({ error: err.errors[0].message });
+      if (error instanceof ZodError) {
+            return res.status(422).json({ error: error.errors[0].message });
         }
-        const message = err instanceof Error ? err.message : "Unknown error";
+        const message = error instanceof Error ? error.message : "Unknown error";
         console.error("Scan route error:", message);
         res.status(500).json({ error: message });
     }
    }
 
 
-   export default ScanControler;
+   export default ScanController;
