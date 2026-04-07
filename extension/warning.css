@@ -1,0 +1,259 @@
+/* Secure Browse Guard - Warning Page Styles */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #fff;
+}
+
+.warning-container {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 40px;
+  max-width: 600px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.warning-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 24px;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px rgba(238, 90, 36, 0.4);
+}
+
+.warning-icon svg {
+  width: 40px;
+  height: 40px;
+  color: white;
+}
+
+.warning-title {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: #ff6b6b;
+  margin-bottom: 16px;
+}
+
+.warning-message {
+  text-align: center;
+  color: #a0a0a0;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.warning-message p {
+  margin-bottom: 8px;
+}
+
+.site-info {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.label {
+  color: #888;
+  font-weight: 500;
+}
+
+.value {
+  color: #fff;
+  font-weight: 600;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.threat-level {
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.threat-level.critical {
+  background: #ff4757;
+  color: white;
+}
+
+.threat-level.high {
+  background: #ff6348;
+  color: white;
+}
+
+.threat-level.medium {
+  background: #ffa502;
+  color: #1a1a2e;
+}
+
+.threat-level.low {
+  background: #2ed573;
+  color: white;
+}
+
+.risk-details {
+  background: rgba(255, 107, 107, 0.1);
+  border-left: 4px solid #ff6b6b;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.risk-details h3 {
+  color: #ff6b6b;
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.risk-details ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.risk-details li {
+  padding: 6px 0;
+  padding-left: 24px;
+  position: relative;
+  color: #ccc;
+  font-size: 14px;
+}
+
+.risk-details li::before {
+  content: '⚠️';
+  position: absolute;
+  left: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.btn {
+  flex: 1;
+  padding: 14px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-safe {
+  background: linear-gradient(135deg, #2ed573 0%, #26d0ce 100%);
+  color: white;
+}
+
+.btn-safe:hover {
+  box-shadow: 0 8px 20px rgba(46, 213, 115, 0.4);
+}
+
+.btn-danger {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ff6b6b;
+  border: 2px solid #ff6b6b;
+}
+
+.btn-danger:hover {
+  background: #ff6b6b;
+  color: white;
+}
+
+.footer {
+  text-align: center;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.footer p {
+  color: #888;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.footer strong {
+  color: #26d0ce;
+}
+
+.disclaimer {
+  font-size: 12px !important;
+  color: #666 !important;
+  font-style: italic;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .warning-container {
+    padding: 24px;
+  }
+  
+  .warning-title {
+    font-size: 22px;
+  }
+  
+  .actions {
+    flex-direction: column;
+  }
+  
+  .value {
+    max-width: 50%;
+  }
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+.warning-icon {
+  animation: pulse 2s infinite;
+}

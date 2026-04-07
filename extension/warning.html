@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚠️ Security Warning - Secure Browse Guard</title>
+  <link rel="stylesheet" href="warning.css">
+</head>
+<body>
+  <div class="warning-container">
+    <div class="warning-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+    </div>
+    
+    <h1 class="warning-title">Phishing Site Detected</h1>
+    
+    <div class="warning-message">
+      <p>Secure Browse Guard has identified this website as a potential phishing attempt.</p>
+      <p>Your personal information and data may be at risk if you proceed.</p>
+    </div>
+    
+    <div class="site-info">
+      <div class="info-row">
+        <span class="label">URL:</span>
+        <span class="value" id="blocked-url">Loading...</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Confidence:</span>
+        <span class="value" id="confidence-score">Loading...</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Threat Level:</span>
+        <span class="value threat-level" id="threat-level">High</span>
+      </div>
+    </div>
+    
+    <div class="risk-details">
+      <h3>Potential Risks:</h3>
+      <ul>
+        <li>Theft of passwords, credit cards, or personal information</li>
+        <li>Installation of malware or viruses</li>
+        <li>Identity theft and fraud</li>
+        <li>Unauthorized access to your accounts</li>
+      </ul>
+    </div>
+    
+    <div class="actions">
+      <button class="btn btn-safe" id="btn-back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M19 12H5M12 19l-7-7 7-7"></path>
+        </svg>
+        Go Back to Safety
+      </button>
+      
+      <button class="btn btn-danger" id="btn-proceed">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M12 2v20M2 12h20"></path>
+        </svg>
+        Proceed Anyway (Unsafe)
+      </button>
+    </div>
+    
+    <div class="footer">
+      <p>Protected by <strong>Secure Browse Guard</strong></p>
+      <p class="disclaimer">
+        Machine learning detection is not 100% accurate. False positives may occur.
+        Only proceed if you trust this website completely.
+      </p>
+    </div>
+  </div>
+  
+  <script src="warning.js"></script>
+</body>
+</html>

@@ -1,4 +1,33 @@
 services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - sbg-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - sbg-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   backend:
     build:
       context: ./backend
@@ -8,12 +37,18 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - ML_SERVER_URL=http://ml-server:5001
     depends_on:
+      redis:
+        condition: service_healthy
       ml-server:
         condition: service_healthy
     networks:
       - sbg-network
+    restart: unless-stopped
 
   ml-server:
     build:
@@ -21,14 +56,24 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5001:5001"
+    environment:
+      - PORT=5001
+      - MODEL_PATH=model/phishing_model.h5
+      - TOKENIZER_PATH=model/tokenizer.pkl
+      - THRESHOLD=0.7
+      - MAX_LEN=100
+      - BATCH_SIZE=32
+    volumes:
+      - ./ml-server/model:/app/model:ro
     networks:
       - sbg-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5001/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+    restart: unless-stopped
 
   frontend:
     build:
@@ -46,3 +91,6 @@ services:
 networks:
   sbg-network:
     driver: bridge
+
+volumes:
+  redis_data:

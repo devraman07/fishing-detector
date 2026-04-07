@@ -1,17 +1,9 @@
-import express from "express";
-import rateLimit from "express-rate-limit";
-import ScanController from "../Controllers/scanController.js";
+import express from 'express';
+import ScanController from '../Controllers/scanController.js';
 
 const router = express.Router();
 
-const scanLimiter = rateLimit({
-  windowMs: 60000,
-  max: 30,
-  message: { error: "Too many requests" }
-});
-
-router.post("/", scanLimiter, ScanController);
-
-
+// Note: Rate limiting is handled at server level (scanLimiter middleware)
+router.post('/', ScanController);
 
 export default router;

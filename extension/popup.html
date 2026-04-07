@@ -1,20 +1,214 @@
 ﻿<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Secure Browse Guard</title>
   <style>
-    body { font-family: sans-serif; width: 280px; padding: 16px; }
-    h2 { margin: 0 0 12px; font-size: 16px; }
-    #status { font-size: 13px; color: #555; }
-    .safe { color: green; font-weight: bold; }
-    .suspicious { color: red; font-weight: bold; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 320px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+    }
+    .container { padding: 16px; }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .header-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, #26d0ce 0%, #2ed573 100%);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .header-icon svg { width: 18px; height: 18px; color: white; }
+    .header h1 { font-size: 16px; font-weight: 600; }
+    .status-card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .status-header {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 8px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    .status-dot.active { background: #2ed573; }
+    .status-dot.warning { background: #ffa502; }
+    .status-dot.danger { background: #ff4757; }
+    .status-text { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .site-info { margin-top: 12px; }
+    .site-url {
+      font-size: 12px;
+      color: #aaa;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+    .scan-result {
+      display: flex; align-items: center; gap: 12px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .result-badge {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .result-badge.safe { background: rgba(46, 213, 115, 0.2); color: #2ed573; }
+    .result-badge.suspicious { background: rgba(255, 71, 87, 0.2); color: #ff4757; }
+    .result-badge.loading { background: rgba(255, 165, 2, 0.2); color: #ffa502; }
+    .confidence { font-size: 12px; color: #888; }
+    .confidence-value { color: #fff; font-weight: 600; }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .stat-box {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #26d0ce;
+    }
+    .stat-label {
+      font-size: 10px;
+      color: #888;
+      margin-top: 2px;
+    }
+    .actions {
+      display: flex; gap: 8px;
+    }
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #26d0ce 0%, #2ed573 100%);
+      color: #1a1a2e;
+    }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.15); }
+    .footer {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      text-align: center;
+    }
+    .footer-text { font-size: 10px; color: #666; }
+    .error-message {
+      background: rgba(255, 71, 87, 0.1);
+      border: 1px solid rgba(255, 71, 87, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .error-message p {
+      font-size: 12px;
+      color: #ff6b6b;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
   </style>
 </head>
 <body>
-  <h2>Secure Browse Guard</h2>
-  <div id="status">Scanning current tab...</div>
-  <script type="module" src="popup.js"></script>
+  <div class="container">
+    <div class="header">
+      <div class="header-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+      </div>
+      <h1>Secure Browse Guard</h1>
+    </div>
+    
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-value" id="stat-scanned">0</div>
+        <div class="stat-label">Scanned</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-blocked">0</div>
+        <div class="stat-label">Blocked</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-cache">0</div>
+        <div class="stat-label">Cache</div>
+      </div>
+    </div>
+    
+    <div class="status-card" id="current-site">
+      <div class="status-header">
+        <div class="status-dot active" id="status-dot"></div>
+        <span class="status-text" id="status-text">Scanning...</span>
+      </div>
+      <div class="site-info">
+        <div class="site-url" id="site-url">Loading...</div>
+      </div>
+      <div class="scan-result" id="scan-result" style="display: none;">
+        <span class="result-badge loading" id="result-badge">SCANNING</span>
+        <span class="confidence">Confidence: <span class="confidence-value" id="confidence">--</span></span>
+      </div>
+    </div>
+    
+    <div class="error-message" id="error-message" style="display: none;">
+      <p id="error-text"></p>
+    </div>
+    
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-manual-scan">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        Manual Scan
+      </button>
+      <button class="btn btn-secondary" id="btn-clear-cache">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+        </svg>
+        Clear Cache
+      </button>
+    </div>
+    
+    <div class="footer">
+      <p class="footer-text">Real-time phishing protection enabled</p>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
 </body>
 </html>

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": 1,
+      "priority": 1,
+      "action": {
+        "type": "allow"
+      },
+      "condition": {
+        "urlFilter": "*",
+        "resourceTypes": ["main_frame"]
+      }
+    }
+  ]
+}
