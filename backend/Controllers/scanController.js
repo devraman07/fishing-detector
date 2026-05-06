@@ -2,14 +2,11 @@ import { ZodError } from 'zod';
 import { validateUrl } from '../utils/validator.js';
 import { callMLServer } from '../services/mlClient.js';
 
-const CACHE_TTL = parseInt(process.env.CACHE_TTL_SECONDS) || 300; // 5 minutes default
-
 /**
- * Scan Controller - Production grade with Redis caching
+ * Scan Controller - Production grade without Redis caching
  */
 const ScanController = async (req, res) => {
   const logger = req.logger;
-  const redis = req.redis;
   
   try {
     // Validate URL
@@ -32,39 +29,9 @@ const ScanController = async (req, res) => {
       });
     }
     
-    // Generate cache key
-    const cacheKey = `scan:${Buffer.from(url).toString('base64')}`;
-    
-    // Check Redis cache first
-    const cachedResult = await redis.get(cacheKey);
-    if (cachedResult) {
-      logger.info({ url, cached: true }, 'Returning cached scan result');
-      const parsed = JSON.parse(cachedResult);
-      
-      // Update stats
-      await redis.incr('stats:total_scanned');
-      
-      return res.json({
-        success: true,
-        data: {
-          ...parsed,
-          cached: true
-        }
-      });
-    }
-    
     // Call ML server
     logger.info({ url }, 'Scanning URL with ML server');
     const prediction = await callMLServer(url);
-    
-    // Cache the result
-    await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(prediction));
-    
-    // Update stats
-    await redis.incr('stats:total_scanned');
-    if (prediction.prediction === 'phishing') {
-      await redis.incr('stats:blocked');
-    }
     
     logger.info({ 
       url, 

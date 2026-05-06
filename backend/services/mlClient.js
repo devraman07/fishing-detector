@@ -23,7 +23,7 @@ export async function callMLServer(url, retryCount = 0) {
     // Transform response to standard format
     const result = {
       url: response.data.url || url,
-      prediction: response.data.result === 'suspicious' ? 'phishing' : 'safe',
+      prediction: response.data.prediction || 'safe',
       confidence: response.data.confidence || 0,
       latency,
       source: 'ml'

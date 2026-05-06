@@ -17,6 +17,7 @@
     errorText: document.getElementById('error-text'),
     statScanned: document.getElementById('stat-scanned'),
     statBlocked: document.getElementById('stat-blocked'),
+    statAllowed: document.getElementById('stat-allowed'),
     statCache: document.getElementById('stat-cache'),
     btnManualScan: document.getElementById('btn-manual-scan'),
     btnClearCache: document.getElementById('btn-clear-cache')
@@ -33,9 +34,10 @@
     try {
       const response = await chrome.runtime.sendMessage({ action: 'getStats' });
       if (response.success) {
-        elements.statScanned.textContent = response.data.totalScanned;
-        elements.statBlocked.textContent = response.data.blockedCount;
-        elements.statCache.textContent = response.data.cacheSize;
+        elements.statScanned.textContent = response.data.scanned || 0;
+        elements.statBlocked.textContent = response.data.blocked || 0;
+        elements.statAllowed.textContent = response.data.allowed || 0;
+        elements.statCache.textContent = response.data.cacheSize || 0;
       }
     } catch (err) {
       console.error('[SBG] Failed to load stats:', err);
@@ -64,7 +66,7 @@
       elements.confidence.textContent = '--';
       elements.errorMessage.style.display = 'none';
       
-      const response = await chrome.runtime.sendMessage({ action: 'checkUrl', url: currentUrl });
+      const response = await chrome.runtime.sendMessage({ action: 'scanUrl', url: currentUrl });
       
       if (!response.success) throw new Error(response.error);
       displayResult(response.data);
@@ -89,7 +91,7 @@
     const confidence = (result.confidence * 100).toFixed(1);
     elements.confidence.textContent = `${confidence}%`;
     
-    if (result.isPhishing) {
+    if (result.prediction === 'phishing') {
       elements.statusDot.className = 'status-dot danger';
       elements.statusText.textContent = 'Phishing Detected!';
       elements.resultBadge.className = 'result-badge suspicious';

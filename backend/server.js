@@ -1,6 +1,6 @@
 /**
  * Secure Browse Guard - Production Backend Server
- * Features: Redis caching, structured logging, security, retry logic, validation
+ * Features: Structured logging, security, retry logic, validation
  */
 
 import express from 'express';
@@ -9,11 +9,8 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import { v4 as uuidv4 } from 'uuid';
-import Redis from 'ioredis';
 import pino from 'pino';
 import scanRoute from './routes/scan.js';
-import { validateExtensionAuth, createExtensionRateLimiter } from './middleware/auth.js';
-import whitelistRoute from './routes/whitelist.js';
 
 dotenv.config();
 
@@ -27,21 +24,6 @@ const logger = pino({
 });
 
 const app = express();
-
-// Initialize Redis client (Redis Cloud compatible)
-const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT) || 6379,
-  password: process.env.REDIS_PASSWORD || undefined,
-  username: process.env.REDIS_USERNAME || undefined,
-  db: parseInt(process.env.REDIS_DB) || 0,
-  retryStrategy: (times) => Math.min(times * 50, 2000),
-  maxRetriesPerRequest: 3,
-  tls: process.env.REDIS_TLS === 'true' ? {} : undefined
-});
-
-redis.on('connect', () => logger.info('Redis connected'));
-redis.on('error', (err) => logger.error({ err }, 'Redis error'));
 
 // Security middleware
 app.use(helmet({
@@ -126,9 +108,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Make redis available to routes
+// Attach logger to requests
 app.use((req, res, next) => {
-  req.redis = redis;
   req.logger = logger.child({ requestId: req.requestId });
   next();
 });
@@ -141,14 +122,6 @@ app.get('/health', async (req, res) => {
   };
   
   try {
-    await redis.ping();
-    checks.redis = 'ok';
-  } catch (err) {
-    checks.redis = 'error';
-    logger.error({ err }, 'Health check: Redis unavailable');
-  }
-  
-  try {
     const axios = (await import('axios')).default;
     const mlUrl = process.env.ML_SERVER_URL || 'http://localhost:5001';
     await axios.get(`${mlUrl}/health`, { timeout: 5000 });
@@ -158,45 +131,29 @@ app.get('/health', async (req, res) => {
     logger.warn('Health check: ML server unavailable');
   }
   
-  const isHealthy = checks.redis === 'ok' && checks.ml === 'ok';
+  const isHealthy = checks.ml === 'ok';
   res.status(isHealthy ? 200 : 503).json({
     success: isHealthy,
     data: checks
   });
 });
 
-// Apply extension auth middleware
-app.use(validateExtensionAuth);
+// API routes (simplified for local dev)
+app.use('/api/scan', scanLimiter, scanRoute);
 
-// Apply per-extension rate limiting to scan endpoint
-const extensionRateLimiter = createExtensionRateLimiter(redis);
-
-// API routes
-app.use('/api/scan', scanLimiter, extensionRateLimiter, scanRoute);
-app.use('/api/whitelist', whitelistRoute);
-
-// Stats endpoint
+// Stats endpoint (simplified without Redis)
 app.get('/api/stats', async (req, res) => {
-  try {
-    const scanned = await redis.get('stats:total_scanned') || '0';
-    const blocked = await redis.get('stats:blocked') || '0';
-    const cacheSize = await redis.dbsize();
-    
-    res.json({
-      success: true,
-      data: {
-        totalScanned: parseInt(scanned),
-        blockedCount: parseInt(blocked),
-        cacheSize
-      }
-    });
-  } catch (err) {
-    logger.error({ err }, 'Failed to get stats');
-    res.status(500).json({ success: false, error: 'Failed to get stats' });
-  }
+  res.json({
+    success: true,
+    data: {
+      totalScanned: 0,
+      blockedCount: 0,
+      message: 'Stats tracking disabled - Redis removed'
+    }
+  });
 });
 
-// Analytics endpoint for extension telemetry
+// Analytics endpoint for extension telemetry (logging only, no Redis)
 app.post('/api/analytics', async (req, res) => {
   try {
     const { type, data, extensionId } = req.body;
@@ -216,11 +173,6 @@ app.post('/api/analytics', async (req, res) => {
       confidence: data?.confidence,
       wasFlagged: data?.wasFlagged
     }, 'Analytics event');
-    
-    // Store in Redis for aggregation
-    const eventKey = `analytics:${type}:${new Date().toISOString().split('T')[0]}`;
-    await redis.hincrby(eventKey, 'count', 1);
-    await redis.expire(eventKey, 30 * 24 * 60 * 60); // 30 day retention
     
     res.json({ success: true });
   } catch (err) {
@@ -258,7 +210,6 @@ app.use((err, req, res, _next) => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
-  await redis.quit();
   process.exit(0);
 });
 

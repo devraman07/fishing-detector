@@ -1,7 +1,7 @@
 {
   "name": "secure-browse-guard-backend",
   "version": "2.0.0",
-  "description": "Production-grade API for phishing detection with Redis caching, logging, and security features",
+  "description": "Production-grade API for phishing detection with logging, security, and ML integration",
   "type": "module",
   "scripts": {
     "dev": "nodemon server.js",
@@ -19,8 +19,7 @@
     "drizzle-orm": "^0.29.0",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.0",
-    "helmet": "^7.1.0",
-    "ioredis": "^5.3.2",
+    "helmet": "^7.2.0",
     "pino": "^8.16.0",
     "pino-pretty": "^10.2.0",
     "uuid": "^9.0.0",

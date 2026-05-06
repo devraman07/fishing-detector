@@ -57,41 +57,53 @@ export function validateExtensionAuth(req, res, next) {
   next();
 }
 
+// In-memory rate limiter storage (no Redis)
+const rateLimitMap = new Map();
+
+// Cleanup expired entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, data] of rateLimitMap.entries()) {
+    if (data.expiresAt < now) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 60000); // Cleanup every minute
+
 /**
- * Per-extension rate limiting using Redis
+ * Per-extension rate limiting using in-memory Map
  */
-export function createExtensionRateLimiter(redis) {
+export function createExtensionRateLimiter() {
   return async (req, res, next) => {
     const extensionId = req.extensionId || req.ip;
+    const now = Date.now();
     const key = `rate_limit:${extensionId}`;
     
-    try {
-      const current = await redis.incr(key);
-      
-      // Set expiry on first request
-      if (current === 1) {
-        await redis.expire(key, 60); // 1-minute window
-      }
-      
-      const limit = parseInt(process.env.SCAN_RATE_LIMIT_MAX) || 30;
-      
-      // Set rate limit headers
-      res.setHeader('X-RateLimit-Limit', limit);
-      res.setHeader('X-RateLimit-Remaining', Math.max(0, limit - current));
-      
-      if (current > limit) {
-        req.logger?.warn({ extensionId, current, limit }, 'Rate limit exceeded');
-        return res.status(429).json({
-          success: false,
-          error: `Rate limit exceeded. Max ${limit} scans per minute per extension.`
-        });
-      }
-      
-      next();
-    } catch (error) {
-      req.logger?.error({ error }, 'Rate limiter error');
-      // Fail open if Redis error
-      next();
+    const limit = parseInt(process.env.SCAN_RATE_LIMIT_MAX) || 30;
+    const windowMs = 60000; // 1 minute window
+    
+    // Get or create rate limit entry
+    let data = rateLimitMap.get(key);
+    if (!data || data.expiresAt < now) {
+      data = { count: 0, expiresAt: now + windowMs };
+      rateLimitMap.set(key, data);
     }
+    
+    data.count++;
+    
+    // Set rate limit headers
+    res.setHeader('X-RateLimit-Limit', limit);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, limit - data.count));
+    res.setHeader('X-RateLimit-Reset', Math.ceil((data.expiresAt - now) / 1000));
+    
+    if (data.count > limit) {
+      req.logger?.warn({ extensionId, current: data.count, limit }, 'Rate limit exceeded');
+      return res.status(429).json({
+        success: false,
+        error: `Rate limit exceeded. Max ${limit} scans per minute per extension.`
+      });
+    }
+    
+    next();
   };
 }

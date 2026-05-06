@@ -4,13 +4,14 @@
   "version": "2.0.0",
   "description": "Real-time ML-powered phishing detection with browser-level blocking",
   "permissions": [
-    "webRequest",
-    "webRequestBlocking",
     "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
     "storage",
     "tabs",
     "scripting",
-    "activeTab"
+    "activeTab",
+    "notifications",
+    "webNavigation"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -49,12 +50,6 @@
     }
   ],
   "declarative_net_request": {
-    "rule_resources": [
-      {
-        "id": "ruleset_1",
-        "enabled": true,
-        "path": "rules.json"
-      }
-    ]
+    "rule_resources": []
   }
 }

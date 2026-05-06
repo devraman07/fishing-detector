@@ -13,21 +13,6 @@ services:
     networks:
       - sbg-network
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    networks:
-      - sbg-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-
   backend:
     build:
       context: ./backend
@@ -38,12 +23,8 @@ services:
       - ./backend/.env
     environment:
       - NODE_ENV=production
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - ML_SERVER_URL=http://ml-server:5001
     depends_on:
-      redis:
-        condition: service_healthy
       ml-server:
         condition: service_healthy
     networks:
@@ -92,5 +73,3 @@ networks:
   sbg-network:
     driver: bridge
 
-volumes:
-  redis_data:
