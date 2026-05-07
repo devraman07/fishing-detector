@@ -8,11 +8,111 @@ import { CONFIG } from './config.js';
 // ============ STATE MANAGEMENT ============
 const scanCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const tempAllowlist = new Map(); // Temporary allowlist for "Proceed" functionality
+const tempAllowlist = new Map(); // hostname -> { expiresAt, url }
+
+async function initRuleIdCounter() {
+  try {
+    const rules = await chrome.declarativeNetRequest.getDynamicRules();
+    const maxId = rules.reduce((acc, r) => (r && typeof r.id === 'number' ? Math.max(acc, r.id) : acc), 999);
+    ruleIdCounter = Math.max(1000, maxId + 1);
+  } catch (e) {
+    // Keep default
+  }
+}
 const ALLOWLIST_TTL = 5 * 60 * 1000; // 5 minutes
 const stats = { scanned: 0, blocked: 0, errors: 0, allowed: 0 };
 
 let ruleIdCounter = 1000; // Start dynamic rules from ID 1000
+
+const STORAGE_KEYS = {
+  allowlist: 'tempAllowlist'
+};
+
+const ALARM_CLEANUP = 'allowlistCleanup';
+
+async function loadAllowlistFromStorage() {
+  try {
+    const data = await chrome.storage.local.get([STORAGE_KEYS.allowlist]);
+    const stored = data[STORAGE_KEYS.allowlist];
+    if (!stored || typeof stored !== 'object') return;
+    const now = Date.now();
+    for (const [hostname, entry] of Object.entries(stored)) {
+      if (!entry || typeof entry.expiresAt !== 'number') continue;
+      if (entry.expiresAt > now) {
+        tempAllowlist.set(hostname, { expiresAt: entry.expiresAt, url: entry.url });
+      }
+    }
+  } catch (e) {
+    console.warn('[SBG] Failed to load allowlist from storage:', e);
+  }
+}
+
+async function persistAllowlistToStorage() {
+  try {
+    const obj = {};
+    for (const [hostname, entry] of tempAllowlist.entries()) {
+      obj[hostname] = { expiresAt: entry.expiresAt, url: entry.url };
+    }
+    await chrome.storage.local.set({ [STORAGE_KEYS.allowlist]: obj });
+  } catch (e) {
+    console.warn('[SBG] Failed to persist allowlist to storage:', e);
+  }
+}
+
+async function cleanupExpiredAllowlistEntries() {
+  const now = Date.now();
+  let changed = false;
+  for (const [hostname, entry] of tempAllowlist.entries()) {
+    if (!entry || typeof entry.expiresAt !== 'number' || entry.expiresAt <= now) {
+      try {
+        const dynamicRules = await chrome.declarativeNetRequest.getDynamicRules();
+        const hasRule = dynamicRules.some((r) => r && r.condition && r.condition.urlFilter === `||${hostname}`);
+        if (!hasRule && entry && entry.url) {
+          await addBlockRule(entry.url);
+        }
+      } catch (e) {
+        console.warn('[SBG] Failed to restore block rule after allowlist expiry:', e);
+      }
+      tempAllowlist.delete(hostname);
+      changed = true;
+    }
+  }
+  if (changed) await persistAllowlistToStorage();
+}
+
+async function removeBlockRulesForHostname(hostname) {
+  if (!hostname) return;
+  try {
+    const rules = await chrome.declarativeNetRequest.getDynamicRules();
+    const toRemove = rules
+      .filter((r) => r && r.condition && r.condition.urlFilter === `||${hostname}`)
+      .map((r) => r.id);
+
+    if (toRemove.length) {
+      await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: toRemove });
+      console.log('[SBG] Removed block rule(s) for', hostname, toRemove);
+    }
+  } catch (e) {
+    console.warn('[SBG] Failed to remove block rule(s) for hostname:', hostname, e);
+  }
+}
+
+chrome.runtime.onStartup.addListener(() => {
+  loadAllowlistFromStorage();
+  initRuleIdCounter();
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  loadAllowlistFromStorage();
+  initRuleIdCounter();
+  chrome.alarms.create(ALARM_CLEANUP, { periodInMinutes: 1 });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm && alarm.name === ALARM_CLEANUP) {
+    cleanupExpiredAllowlistEntries();
+  }
+});
 
 // ============ URL VALIDATION ============
 function shouldSkipUrl(url) {
@@ -33,16 +133,19 @@ function isTempAllowed(url) {
   const domain = new URL(url).hostname;
   const allowed = tempAllowlist.get(domain);
   if (!allowed) return false;
-  if (Date.now() - allowed.time > ALLOWLIST_TTL) {
+  if (typeof allowed.expiresAt !== 'number' || Date.now() > allowed.expiresAt) {
     tempAllowlist.delete(domain);
+    persistAllowlistToStorage();
     return false;
   }
   return true;
 }
 
-function addToTempAllowlist(url) {
+async function addToTempAllowlist(url) {
   const domain = new URL(url).hostname;
-  tempAllowlist.set(domain, { time: Date.now(), url });
+  const expiresAt = Date.now() + ALLOWLIST_TTL;
+  tempAllowlist.set(domain, { expiresAt, url });
+  await persistAllowlistToStorage();
   console.log('[SBG] Added to temporary allowlist:', domain);
 }
 
@@ -165,7 +268,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // Check if temporarily allowed
   if (isTempAllowed(url)) {
     console.log('[SBG] Allowing temporarily whitelisted URL:', url);
-    stats.allowed++;
     return;
   }
   
@@ -176,7 +278,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     
     if (result.prediction === 'phishing' && result.confidence > 0.6) {
       console.log('[SBG] 🚫 BLOCKING phishing site:', url, result.confidence);
-      stats.blocked++;
       
       // Store blocked info for this tab
       chrome.storage.session.set({ [`blocked_${tabId}`]: { url, confidence: result.confidence, time: Date.now() }});
@@ -211,6 +312,7 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
   
   if (buttonIndex === 0) {
     // Go Back - navigate to new tab page or history
+    stats.blocked++;
     if (currentTab) {
       chrome.tabs.update(currentTab.id, { url: 'chrome://newtab/' });
     }
@@ -222,11 +324,17 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
       const ruleId = data[`rule_${currentTab.id}`];
       
       if (blocked) {
-        // Remove block rule
-        await removeBlockRule(ruleId);
+        // Remove block rule(s)
+        try {
+          const hostname = new URL(blocked.url).hostname;
+          await removeBlockRulesForHostname(hostname);
+        } catch {
+          await removeBlockRule(ruleId);
+        }
         
         // Add to temporary allowlist
-        addToTempAllowlist(blocked.url);
+        await addToTempAllowlist(blocked.url);
+        stats.allowed++;
         
         // Navigate to the URL
         chrome.tabs.update(currentTab.id, { url: blocked.url });
@@ -242,40 +350,84 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
 
 // ============ MESSAGE HANDLERS ============
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  switch (request.action) {
-    case 'getStats':
-      sendResponse({
-        success: true,
-        data: {
-          scanned: stats.scanned,
-          blocked: stats.blocked,
-          errors: stats.errors,
-          allowed: stats.allowed,
-          cacheSize: scanCache.size
+  (async () => {
+    switch (request.action) {
+      case 'getStats':
+        sendResponse({
+          success: true,
+          data: {
+            scanned: stats.scanned,
+            blocked: stats.blocked,
+            errors: stats.errors,
+            allowed: stats.allowed,
+            cacheSize: scanCache.size
+          }
+        });
+        return;
+
+      case 'scanUrl': {
+        const result = await scanUrl(request.url);
+        sendResponse({ success: true, data: result });
+        return;
+      }
+
+      case 'clearCache':
+        scanCache.clear();
+        sendResponse({ success: true });
+        return;
+
+      case 'keepBlocked': {
+        // User explicitly chose to keep blocking
+        stats.blocked++;
+        if (typeof request.tabId === 'number') {
+          // Clear any session state for this tab
+          await chrome.storage.session.remove([`blocked_${request.tabId}`, `rule_${request.tabId}`]);
         }
-      });
-      return false;
-      
-    case 'scanUrl':
-      scanUrl(request.url)
-        .then(result => sendResponse({ success: true, data: result }))
-        .catch(error => sendResponse({ success: false, error: error.message }));
-      return true;
-      
-    case 'clearCache':
-      scanCache.clear();
-      sendResponse({ success: true });
-      return false;
-      
-    case 'proceedAnyway':
-      // Called from warning page
-      addToTempAllowlist(request.url);
-      sendResponse({ success: true });
-      return false;
-      
-    default:
-      return false;
-  }
+
+        sendResponse({ success: true });
+        return;
+      }
+
+      case 'proceedAnyway': {
+        const url = request.url;
+        if (!url) {
+          sendResponse({ success: false, error: 'Missing url' });
+          return;
+        }
+
+        // Remove blocking rule(s) for this hostname so redirect stops immediately
+        if (request.hostname) {
+          await removeBlockRulesForHostname(request.hostname);
+        } else if (typeof request.tabId === 'number') {
+          // Fallback to per-tab rule id
+          const data = await chrome.storage.session.get([`rule_${request.tabId}`]);
+          const ruleId = data[`rule_${request.tabId}`];
+          if (ruleId) await removeBlockRule(ruleId);
+        }
+
+        // Allow temporarily for 5 minutes
+        await addToTempAllowlist(url);
+        stats.allowed++;
+
+        // Clear session state for this tab (so next warning can be fresh)
+        if (typeof request.tabId === 'number') {
+          await chrome.storage.session.remove([`blocked_${request.tabId}`, `rule_${request.tabId}`]);
+        }
+
+        sendResponse({ success: true });
+        return;
+      }
+
+      default:
+        sendResponse({ success: false, error: 'Unknown action' });
+        return;
+    }
+  })().catch((error) => {
+    console.error('[SBG] onMessage handler error:', error);
+    sendResponse({ success: false, error: error && error.message ? error.message : String(error) });
+  });
+
+  return true;
 });
 
 // ============ MAINTENANCE ============
@@ -290,12 +442,8 @@ setInterval(() => {
     }
   }
   
-  // Clean allowlist
-  for (const [key, value] of tempAllowlist.entries()) {
-    if (now - value.time > ALLOWLIST_TTL) {
-      tempAllowlist.delete(key);
-    }
-  }
+  // Clean allowlist (and restore blocking if needed)
+  cleanupExpiredAllowlistEntries();
   
   if (cleaned > 0) console.log(`[SBG] Cleaned ${cleaned} expired entries`);
 }, 60 * 1000);

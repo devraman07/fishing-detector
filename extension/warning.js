@@ -6,17 +6,25 @@
 (function() {
   'use strict';
   
-  // Get URL parameters
+  // Get URL parameters (may be empty when navigated via DNR redirect)
   const urlParams = new URLSearchParams(window.location.search);
-  const blockedUrl = decodeURIComponent(urlParams.get('url') || '');
-  const confidence = parseFloat(urlParams.get('confidence') || '0');
+  let blockedUrl = safeDecode(urlParams.get('url') || '');
+  let confidence = parseFloat(urlParams.get('confidence') || '0');
   
   // DOM Elements
   const blockedUrlEl = document.getElementById('blocked-url');
   const confidenceEl = document.getElementById('confidence-score');
   const threatLevelEl = document.getElementById('threat-level');
-  const btnBack = document.getElementById('btn-back');
-  const btnProceed = document.getElementById('btn-proceed');
+  const btnBlock = document.getElementById('block-btn');
+  const btnProceed = document.getElementById('proceed-btn');
+
+  function safeDecode(value) {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
   
   // Format URL for display (truncate if too long)
   function formatUrl(url) {
@@ -39,10 +47,29 @@
   }
   
   // Initialize page
-  function init() {
+  async function init() {
+    // When warning page is reached via DNR redirect, query params are not available.
+    // Recover the blocked URL and metadata from chrome.storage.session using current tab id.
+    if (!blockedUrl) {
+      try {
+        const tab = await getCurrentActiveTab();
+        if (tab && typeof tab.id === 'number') {
+          const sessionData = await chrome.storage.session.get([`blocked_${tab.id}`]);
+          const blocked = sessionData[`blocked_${tab.id}`];
+          if (blocked && blocked.url) {
+            blockedUrl = blocked.url;
+            confidence = typeof blocked.confidence === 'number' ? blocked.confidence : confidence;
+          }
+        }
+      } catch (e) {
+        console.warn('[SBG] Failed to recover blocked URL from session storage:', e);
+      }
+    }
+
     if (!blockedUrl) {
       blockedUrlEl.textContent = 'Error: No URL provided';
       confidenceEl.textContent = 'N/A';
+      if (btnProceed) btnProceed.disabled = true;
       return;
     }
     
@@ -60,25 +87,45 @@
     threatLevelEl.classList.add(threat.class);
     
     // Button handlers
-    btnBack.addEventListener('click', goBack);
-    btnProceed.addEventListener('click', proceedAnyway);
+    if (btnBlock) btnBlock.addEventListener('click', keepBlocked);
+    if (btnProceed) btnProceed.addEventListener('click', proceedAnyway);
     
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') goBack();
+      if (e.key === 'Escape') keepBlocked();
     });
     
     // Log warning displayed
     console.log(`[SBG] Warning displayed for: ${blockedUrl} (confidence: ${confidencePercent}%)`);
   }
+
+  async function getCurrentActiveTab() {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tabs && tabs.length ? tabs[0] : null;
+  }
   
-  // Go back to previous page
-  function goBack() {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      // If no history, go to new tab page
-      window.location.href = 'chrome://newtab';
+  // Keep site blocked and navigate away from warning page
+  async function keepBlocked() {
+    try {
+      const tab = await getCurrentActiveTab();
+      await chrome.runtime.sendMessage({
+        action: 'keepBlocked',
+        url: blockedUrl,
+        tabId: tab && typeof tab.id === 'number' ? tab.id : undefined
+      });
+    } catch (e) {
+      console.warn('[SBG] Failed to send keepBlocked message:', e);
+    }
+
+    try {
+      const tab = await getCurrentActiveTab();
+      if (tab && typeof tab.id === 'number') {
+        await chrome.tabs.update(tab.id, { url: 'chrome://newtab/' });
+      } else {
+        window.location.href = 'chrome://newtab/';
+      }
+    } catch {
+      window.location.href = 'chrome://newtab/';
     }
   }
   
@@ -102,28 +149,47 @@
       // Disable button to prevent double-click
       btnProceed.disabled = true;
       btnProceed.textContent = 'Whitelisting...';
+
+      if (btnBlock) btnBlock.disabled = true;
       
       // Notify background script about bypass with abuse metadata
-      chrome.runtime.sendMessage({
-        action: 'proceedAnyway',
-        url: blockedUrl,
-        reason: 'user_bypass',
-        wasFlagged: wasPreviouslyFlagged,
-        confidence: confidence
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error('[SBG] Error proceeding:', chrome.runtime.lastError);
-          // Fallback: just navigate anyway
-          window.location.href = blockedUrl;
-        } else if (response && response.success) {
-          console.log('[SBG] Whitelisted, navigating to:', blockedUrl);
-          // Navigate after whitelist is confirmed
-          window.location.href = blockedUrl;
-        } else {
-          console.warn('[SBG] Whitelist failed, navigating anyway');
-          window.location.href = blockedUrl;
-        }
-      });
+      getCurrentActiveTab()
+        .then((tab) => {
+          chrome.runtime.sendMessage({
+            action: 'proceedAnyway',
+            url: blockedUrl,
+            hostname: (() => {
+              try { return new URL(blockedUrl).hostname; } catch { return undefined; }
+            })(),
+            tabId: tab && typeof tab.id === 'number' ? tab.id : undefined,
+            reason: 'user_bypass',
+            wasFlagged: wasPreviouslyFlagged,
+            confidence: confidence
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('[SBG] Error proceeding:', chrome.runtime.lastError);
+              window.location.href = blockedUrl;
+              return;
+            }
+
+            if (response && response.success) {
+              if (tab && typeof tab.id === 'number') {
+                chrome.tabs.update(tab.id, { url: blockedUrl });
+              } else {
+                window.location.href = blockedUrl;
+              }
+              return;
+            }
+
+            console.warn('[SBG] Whitelist failed, navigating anyway');
+            window.location.href = blockedUrl;
+          });
+        })
+        .catch(() => {
+          chrome.runtime.sendMessage({ action: 'proceedAnyway', url: blockedUrl }, () => {
+            window.location.href = blockedUrl;
+          });
+        });
     }
   }
   
